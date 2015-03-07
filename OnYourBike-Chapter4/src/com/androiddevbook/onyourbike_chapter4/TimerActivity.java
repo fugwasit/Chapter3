@@ -3,9 +3,11 @@ package com.androiddevbook.onyourbike_chapter4;
 import com.androiddevbook.onyourbike_chapter4.R;
 
 import android.support.v7.app.ActionBarActivity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.StrictMode;
+//import android.os.StrictMode;
+import android.os.Vibrator;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -16,7 +18,9 @@ import android.widget.TextView;
 public class TimerActivity extends ActionBarActivity {
 	
 	private static String CLASS_NAME;
-	private static long UPDATE_EVERY;
+	private static long UPDATE_EVERY=200;
+	protected Vibrator vibrate;
+	protected long lastSeconds;
 	
 	protected TextView counter;
 	protected Button start;
@@ -33,21 +37,47 @@ public class TimerActivity extends ActionBarActivity {
 		CLASS_NAME = getClass().getName();
 	}
 	
-	class UpdateTimer implements Runnable{
-		public void run(){
-			//Log.d(CLASS_NAME, "run");
-			setTimeDisplay();
-			if(handler !=null){
-				handler.postDelayed(this, UPDATE_EVERY);
-			}
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+
+		
+		Log.d(CLASS_NAME, "Setting Text");
+		
+//		if(BuildConfig.DEBUG){
+//			StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
+//			.detectAll().penaltyLog().build());
+//		StrictMode.setVmPolicy(new StrictMode.VmPolicy.Builder()
+//		.detectAll().penaltyLog().penaltyDeath().build());	
+//		}
+		
+		setContentView(R.layout.activity_timer);
+		
+	//	TextView hello = (TextView) findViewById(R.id.timer);
+		
+		counter = (TextView) findViewById(R.id.timer);
+		start = (Button) findViewById(R.id.start_button);
+		stop = (Button) findViewById(R.id.stop_button);
+		
+		vibrate= (Vibrator) getSystemService(VIBRATOR_SERVICE);
+
+		if(vibrate == null){
+			Log.w(CLASS_NAME, "No vibration service exists");
 		}
+		
+		timerRunning = false;
+		startedAt = System.currentTimeMillis();
+		lastStopped = 0;
+		
+		//hello.setText("On Your Bike");
 	}
-	
+
 	public void clickedStart(View view){
 		Log.d(CLASS_NAME, "Clicked Start");
-		startedAt=System.currentTimeMillis();
+		
 		timerRunning=true;
-		setTimeDisplay();
+		startedAt=System.currentTimeMillis();
+
 		enableButtons();
 		
 		handler = new Handler();
@@ -57,17 +87,41 @@ public class TimerActivity extends ActionBarActivity {
 	
 	public void clickedStop(View view){
 		Log.d(CLASS_NAME, "Clicked Stop");
-		lastStopped=System.currentTimeMillis();
+		
 		timerRunning=false;
-		setTimeDisplay();
+		lastStopped=System.currentTimeMillis();
+
 		enableButtons();
 		
 		handler.removeCallbacks(updateTimer);
+		updateTimer = null;
 		handler = null;
+	}
+	
+	public void clickedSettings(View view){
+		Log.d(CLASS_NAME, "clicked settings");
+		
+		Intent settingsIntent = new Intent(getApplicationContext(),
+				SettingsActivity.class);
+		
+		startActivity(settingsIntent);
+				}
+	
+	@Override
+	public void onStart(){
+		super.onStart();
+		Log.d(CLASS_NAME, "onStart");
+		
+		if(timerRunning){
+			handler = new Handler();
+			updateTimer = new UpdateTimer();
+			handler.postDelayed(updateTimer, UPDATE_EVERY);
+		}
 	}
 	
 	protected void enableButtons(){
 		Log.d(CLASS_NAME, "Set buttons enabled/disabled");
+		
 		start.setEnabled(!timerRunning);
 		stop.setEnabled(timerRunning);
 	}
@@ -108,29 +162,17 @@ public class TimerActivity extends ActionBarActivity {
 	}
 	
 	@Override
-	public void onStart(){
-		super.onStart();
-		Log.d(CLASS_NAME, "onStart");
-		
-		if(timerRunning){
-			handler = new Handler();
-			updateTimer = new UpdateTimer();
-			handler.postDelayed(updateTimer, UPDATE_EVERY);
-		}
+	public void onResume(){
+		super.onResume();
+		Log.d(CLASS_NAME, "onResume");
+		enableButtons();
+		setTimeDisplay();
 	}
 	
 	@Override
 	public void onPause(){
 		super.onPause();
 		Log.d(CLASS_NAME, "onPause");
-	}
-	
-	@Override
-	public void onResume(){
-		super.onResume();
-		Log.d(CLASS_NAME, "onResume");
-		enableButtons();
-		setTimeDisplay();
 	}
 	
 	@Override
@@ -153,32 +195,10 @@ public class TimerActivity extends ActionBarActivity {
 	
 	@Override
 	public void onRestart(){
-		super.onDestroy();
+		super.onRestart();
 		Log.d(CLASS_NAME, "onRestart");
 	}
-	@Override
-	protected void onCreate(Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState);
-		setContentView(R.layout.activity_timer);
-		
-	//	TextView hello = (TextView) findViewById(R.id.timer);
-		
-		counter = (TextView) findViewById(R.id.timer);
-		start = (Button) findViewById(R.id.start_button);
-		stop = (Button) findViewById(R.id.stop_button);
-		
-		Log.d(CLASS_NAME, "Setting Text");
-		
-		if(BuildConfig.DEBUG){
-			StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
-			.detectAll().penaltyLog().build());
-		StrictMode.setVmPolicy(new StrictMode.VmPolicy.Builder()
-		.detectAll().penaltyLog().penaltyDeath().build());	
-		}
-		
-		//hello.setText("On Your Bike");
-	}
-
+	
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		Log.d(CLASS_NAME, "Showing Menu");
@@ -187,6 +207,55 @@ public class TimerActivity extends ActionBarActivity {
 		return true;
 	}
 
+	class UpdateTimer implements Runnable{
+		
+		public void run(){
+			//Log.d(CLASS_NAME, "run");
+			setTimeDisplay();
+			
+			if(timerRunning){
+				vibrateCheck();
+			}
+			
+			if(handler !=null){
+				handler.postDelayed(this, UPDATE_EVERY);
+			}
+		}
+	}
+	
+	protected void vibrateCheck(){
+		long timeNow = System.currentTimeMillis();
+		long diff = timeNow - startedAt;
+		long seconds = diff/1000;
+		long minutes = seconds/60;
+		
+		Log.d(CLASS_NAME, "vibrate check");
+		
+		seconds = seconds%60;
+		minutes = minutes%60;
+		
+		if (vibrate !=null && seconds == 0 && seconds != lastSeconds){
+			long[]once = {0, 100};
+			long[]twice = {0, 100, 400, 100};
+			long[]thrice = {0, 100, 400, 100, 400 ,100};
+			
+			//every hour
+			if (minutes == 0){
+				Log.i(CLASS_NAME, "vibrate 3 times");
+				vibrate.vibrate(thrice, -1);
+			}
+			else if (minutes % 5 == 0){
+				Log.i(CLASS_NAME, "vibrate 2 times");
+				vibrate.vibrate(twice, -1);
+			}
+			else if (minutes % 2 == 0){
+				Log.i(CLASS_NAME, "vibrate 1 time");
+				vibrate.vibrate(once, -1);
+			}
+		}
+		lastSeconds=seconds;
+	}
+	
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
 		// Handle action bar item clicks here. The action bar will
